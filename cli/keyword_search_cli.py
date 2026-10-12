@@ -84,6 +84,8 @@ class InvertedIndex:
         total_doc_count = len(self.docmap)
         term_match_doc_count = len(self.index.get(term, set()))
         return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
+    def get_tf_idf(self, doc_id: int, term: str) -> float:
+        return self.get_tf(doc_id, term) * self.get_idf(term)
 
 
 def build_command() -> None:
@@ -107,13 +109,13 @@ def filter_stop_words(words, stop_words) -> list[str]:
 
 
 def load_index_or_exit() -> InvertedIndex:
-      idx = InvertedIndex()
-      try:
-          idx.load()
-      except FileNotFoundError as e:
-          print(e)
-          sys.exit(1)
-      return idx
+    idx = InvertedIndex()
+    try:
+        idx.load()
+    except FileNotFoundError as e:
+        print(e)
+        sys.exit(1)
+    return idx
 
 
 def main() -> None:
@@ -133,6 +135,11 @@ def main() -> None:
 
     idf_parser = subparsers.add_parser("idf", help="")
     idf_parser.add_argument("term", help="term")
+
+    tfidf_parser = subparsers.add_parser(
+        "tfidf", help="Show the TF-IDF score of a term in a document")
+    tfidf_parser.add_argument("doc_id", type=int, help="Document ID")
+    tfidf_parser.add_argument("term", type=str, help="Term to score")
 
     args = parser.parse_args()
 
@@ -156,6 +163,11 @@ def main() -> None:
             token = tokenize_term(args.term)
             idf = idx.get_idf(token)
             print(f"Inverse document frequency of '{args.term}': {idf:.2f}")
+        case "tfidf":
+            idx = load_index_or_exit()
+            token = tokenize_term(args.term)
+            tf_idf = idx.get_tf_idf(args.doc_id, token)
+            print(f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tf_idf:.2f}")
         case _:
             parser.print_help()
 
