@@ -1,4 +1,5 @@
 import argparse
+import math
 import os
 import pickle
 from collections import defaultdict, Counter
@@ -79,6 +80,11 @@ class InvertedIndex:
     def get_tf(self, doc_id, term):
         return self.term_frequencies.get(doc_id, Counter())[term]
 
+    def get_idf(self, term: str) -> float:
+        total_doc_count = len(self.docmap)
+        term_match_doc_count = len(self.index.get(term, set()))
+        return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
+
 
 def build_command() -> None:
     idx = InvertedIndex()
@@ -100,6 +106,16 @@ def filter_stop_words(words, stop_words) -> list[str]:
     return results
 
 
+def load_index_or_exit() -> InvertedIndex:
+      idx = InvertedIndex()
+      try:
+          idx.load()
+      except FileNotFoundError as e:
+          print(e)
+          sys.exit(1)
+      return idx
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Keyword Search CLI")
     subparsers = parser.add_subparsers(
@@ -115,18 +131,16 @@ def main() -> None:
     tf_parser.add_argument("document_id", type=int, help="Document ID")
     tf_parser.add_argument("term", type=str, help="Term to look up")
 
+    idf_parser = subparsers.add_parser("idf", help="")
+    idf_parser.add_argument("term", help="term")
+
     args = parser.parse_args()
 
     match args.command:
         case "search":
             print(f"Searching for: {args.query}")
 
-            idx = InvertedIndex()
-            try:
-                idx.load()
-            except FileNotFoundError as e:
-                print(e)
-                sys.exit(1)
+            idx = load_index_or_exit()
 
             for doc_id in idx.search(args.query):
                 print(f"{doc_id}. {idx.docmap[doc_id]['title']}")
@@ -134,14 +148,14 @@ def main() -> None:
         case "build":
             build_command()
         case "tf":
-            idx = InvertedIndex()
-            try:
-                idx.load()
-            except FileNotFoundError as e:
-                print(e)
-                sys.exit(1)
+            idx = load_index_or_exit()
             token = tokenize_term(args.term)
             print(idx.get_tf(args.document_id, token))
+        case "idf":
+            idx = load_index_or_exit()
+            token = tokenize_term(args.term)
+            idf = idx.get_idf(token)
+            print(f"Inverse document frequency of '{args.term}': {idf:.2f}")
         case _:
             parser.print_help()
 
