@@ -1,6 +1,5 @@
 import argparse
 import math
-import os
 import pickle
 from collections import defaultdict, Counter
 from pathlib import Path
@@ -8,7 +7,7 @@ import sys
 
 from nltk.stem import PorterStemmer
 
-from lib.search_utils import load_movies, load_stop_words, normalize, tokenize_term, tokenize_text
+from lib.search_utils import load_movies, tokenize_term, tokenize_text
 
 stemmer = PorterStemmer()
 
@@ -84,6 +83,7 @@ class InvertedIndex:
         total_doc_count = len(self.docmap)
         term_match_doc_count = len(self.index.get(term, set()))
         return math.log((total_doc_count + 1) / (term_match_doc_count + 1))
+
     def get_tf_idf(self, doc_id: int, term: str) -> float:
         return self.get_tf(doc_id, term) * self.get_idf(term)
 
@@ -92,20 +92,6 @@ def build_command() -> None:
     idx = InvertedIndex()
     idx.build()
     idx.save()
-
-
-def matches(query_tokens: list[str], title_tokens: list[str]) -> bool:
-    return any(q in t for q in query_tokens for t in title_tokens)
-
-
-def filter_stop_words(words, stop_words) -> list[str]:
-    results = []
-    for word in words:
-        if word in stop_words:
-            pass
-        else:
-            results.append(stemmer.stem(word))
-    return results
 
 
 def load_index_or_exit() -> InvertedIndex:
@@ -133,7 +119,7 @@ def main() -> None:
     tf_parser.add_argument("document_id", type=int, help="Document ID")
     tf_parser.add_argument("term", type=str, help="Term to look up")
 
-    idf_parser = subparsers.add_parser("idf", help="")
+    idf_parser = subparsers.add_parser("idf", help="idf parser")
     idf_parser.add_argument("term", help="term")
 
     tfidf_parser = subparsers.add_parser(
@@ -167,7 +153,8 @@ def main() -> None:
             idx = load_index_or_exit()
             token = tokenize_term(args.term)
             tf_idf = idx.get_tf_idf(args.doc_id, token)
-            print(f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tf_idf:.2f}")
+            print(
+                f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tf_idf:.2f}")
         case _:
             parser.print_help()
 

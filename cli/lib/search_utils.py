@@ -37,3 +37,16 @@ def tokenize_term(term: str) -> str:
         raise ValueError(
             f"Expected exactly one token from {term!r}, got {len(tokens)}")
     return tokens[0]
+
+def matches(query_tokens: list[str], title_tokens: list[str]) -> bool:
+    return any(q in t for q in query_tokens for t in title_tokens)
+
+
+def filter_stop_words(words, stop_words) -> list[str]:
+    results = []
+    for word in words:
+        if word in stop_words:
+            pass
+        else:
+            results.append(stemmer.stem(word))
+    return results
