@@ -7,7 +7,7 @@ import sys
 
 from nltk.stem import PorterStemmer
 
-from lib.search_utils import load_movies, tokenize_term, tokenize_text
+from lib.search_utils import BM25_K1, load_movies, tokenize_term, tokenize_text
 
 stemmer = PorterStemmer()
 
@@ -86,7 +86,16 @@ class InvertedIndex:
 
     def get_tf_idf(self, doc_id: int, term: str) -> float:
         return self.get_tf(doc_id, term) * self.get_idf(term)
-
+     
+    def get_bm25_idf(self, term: str) -> float:
+        N = len(self.docmap)
+        df = len(self.index.get(term, set()))
+        result = math.log((N - df + 0.5) / (df + 0.5) + 1)
+        return result
+    def get_bm25_tf(self, doc_id, term, k1=BM25_K1):
+        tf = self.get_tf(doc_id, term)
+        saturation_tf = (tf * (k1 + 1)) / (tf + k1)
+        return saturation_tf
 
 def build_command() -> None:
     idx = InvertedIndex()
@@ -126,6 +135,11 @@ def main() -> None:
         "tfidf", help="Show the TF-IDF score of a term in a document")
     tfidf_parser.add_argument("doc_id", type=int, help="Document ID")
     tfidf_parser.add_argument("term", type=str, help="Term to score")
+    
+    bm25_idf_parser = subparsers.add_parser(
+    "bm25idf", help="Get BM25 IDF score for a given term"
+    )
+    bm25_idf_parser.add_argument("term", type=str, help="Term to get BM25 IDF score for")
 
     args = parser.parse_args()
 
@@ -155,6 +169,11 @@ def main() -> None:
             tf_idf = idx.get_tf_idf(args.doc_id, token)
             print(
                 f"TF-IDF score of '{args.term}' in document '{args.doc_id}': {tf_idf:.2f}")
+        case "bm25idf":
+            idx = load_index_or_exit()
+            token = tokenize_term(args.term)
+            bm25idf = idx.get_bm25_idf(term=token)
+            print(f"BM25 IDF score of '{args.term}': {bm25idf:.2f}")
         case _:
             parser.print_help()
 

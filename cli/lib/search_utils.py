@@ -5,7 +5,7 @@ from nltk.stem import PorterStemmer
 
 stemmer = PorterStemmer()
 
-
+BM25_K1=1.5
 def load_movies():
     with open("data/movies.json", "r") as file:
         movies = json.load(file)["movies"]
