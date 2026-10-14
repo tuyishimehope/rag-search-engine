@@ -1,3 +1,4 @@
+import regex as re
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
@@ -39,7 +40,7 @@ class SemanticSearch():
             if len(self.embeddings) == len(documents):
                 return self.embeddings
         return self.build_embeddings(documents)
-    
+
     def search(self, query, limit):
         if self.embeddings is None:
             raise ValueError(
@@ -47,7 +48,8 @@ class SemanticSearch():
         query_embedding = self.generate_embedding(query)
         scored = []
         for doc, doc_embedding in zip(self.documents, self.embeddings):
-            scored.append((cosine_similarity(query_embedding, doc_embedding), doc))
+            scored.append(
+                (cosine_similarity(query_embedding, doc_embedding), doc))
         scored.sort(key=lambda pair: pair[0], reverse=True)
         return [
             {
@@ -91,7 +93,6 @@ def embed_query_text(query):
     print(f"Shape: {embedding.shape}")
 
 
-
 def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
     dot_product = np.dot(vec1, vec2)
     norm1 = np.linalg.norm(vec1)
@@ -101,6 +102,7 @@ def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
         return 0.0
 
     return dot_product / (norm1 * norm2)
+
 
 def search_query(query, limit):
     semantic_search = SemanticSearch()
@@ -123,4 +125,18 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
             chunks.append(" ".join(words[start - overlap:start + chunk_size]))
         else:
             chunks.append(" ".join(words[start:start + chunk_size]))
+    return chunks
+
+
+def semantic_chunking(text: str, max_chunk_size: int, overlap: int) -> list[str]:
+    output = re.split(r"(?<=[.!?])\s+", text)
+    if max_chunk_size < 1:
+        raise ValueError("chunk size must be at least 1")
+
+    chunks = []
+    for start in range(0, len(output), max_chunk_size):
+        if overlap > 0 and start > 0:
+            chunks.append(" ".join(output[start - overlap:start + max_chunk_size]))
+        else:
+            chunks.append(" ".join(output[start:start + max_chunk_size]))
     return chunks
