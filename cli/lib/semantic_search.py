@@ -11,7 +11,7 @@ class SemanticSearch():
         model = SentenceTransformer("all-MiniLM-L6-v2")
         self.model = model
         self.embeddings = None
-        self.documents = None
+        self.documents = {}
         self.document_map = {}
 
     def generate_embedding(self, text):
@@ -39,6 +39,24 @@ class SemanticSearch():
             if len(self.embeddings) == len(documents):
                 return self.embeddings
         return self.build_embeddings(documents)
+    
+    def search(self, query, limit):
+        if self.embeddings is None:
+            raise ValueError(
+                "No embeddings loaded. Call `load_or_create_embeddings` first.")
+        query_embedding = self.generate_embedding(query)
+        scored = []
+        for doc, doc_embedding in zip(self.documents, self.embeddings):
+            scored.append((cosine_similarity(query_embedding, doc_embedding), doc))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        return [
+            {
+                "score": score,
+                "title": doc["title"],
+                "description": doc["description"],
+            }
+            for score, doc in scored[:limit]
+        ]
 
 
 def verify_model():
@@ -63,3 +81,46 @@ def verify_embeddings():
     print(
         f"Embeddings shape: {embeddings.shape[0]} vectors in {embeddings.shape[1]} dimensions"
     )
+
+
+def embed_query_text(query):
+    semantic_search = SemanticSearch()
+    embedding = semantic_search.generate_embedding(query)
+    print(f"Query: {query}")
+    print(f"First 3 dimensions: {embedding[:3]}")
+    print(f"Shape: {embedding.shape}")
+
+
+
+def cosine_similarity(vec1: np.ndarray, vec2: np.ndarray) -> float:
+    dot_product = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+
+    return dot_product / (norm1 * norm2)
+
+def search_query(query, limit):
+    semantic_search = SemanticSearch()
+    documents = load_movies()
+    semantic_search.load_or_create_embeddings(documents)
+    results = semantic_search.search(query, limit)
+    for rank, result in enumerate(results, start=1):
+        print(f"{rank}. {result['title']} (score: {result['score']:.4f})")
+        print(f"  {result['description'][:100]}...")
+        print()
+
+
+def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
+    if chunk_size < 1:
+        raise ValueError("chunk size must be at least 1")
+    words = text.split()
+    chunks = []
+    for start in range(0, len(words), chunk_size):
+        if overlap > 0 and start > 0:
+            chunks.append(" ".join(words[start - overlap:start + chunk_size]))
+        else:
+            chunks.append(" ".join(words[start:start + chunk_size]))
+    return chunks
