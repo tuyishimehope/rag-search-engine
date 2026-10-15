@@ -17,6 +17,24 @@ def precision_at_k(retrieved: list[str], relevant: list[str]) -> float:
     return relevant_retrieved / len(retrieved)
 
 
+def recall_at_k(retrieved: list[str], relevant: list[str]) -> float:
+    """Fraction of the relevant titles that showed up in the retrieved list."""
+    relevant_set = set(relevant)
+    if not relevant_set:
+        return 0.0
+    # Set intersection counts each relevant title at most once, so recall
+    # can never exceed 1.0 even if a title were returned twice.
+    relevant_retrieved = len(relevant_set & set(retrieved))
+    return relevant_retrieved / len(relevant_set)
+
+
+def f1_score(precision: float, recall: float) -> float:
+    """Harmonic mean of precision and recall (0.0 when both are 0)."""
+    if precision + recall == 0:
+        return 0.0
+    return 2 * (precision * recall) / (precision + recall)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search Evaluation CLI")
     parser.add_argument(
@@ -43,9 +61,13 @@ def main() -> None:
         results = hybrid_search.rrf_search(query, RRF_K, limit)
         retrieved = [result["title"] for result in results]
         precision = precision_at_k(retrieved, relevant)
+        recall = recall_at_k(retrieved, relevant)
+        f1 = f1_score(precision, recall)
 
         print(f"- Query: {query}")
         print(f"  - Precision@{limit}: {precision:.4f}")
+        print(f"  - Recall@{limit}: {recall:.4f}")
+        print(f"  - F1 Score: {f1:.4f}")
         print(f"  - Retrieved: {', '.join(retrieved)}")
         print(f"  - Relevant: {', '.join(relevant)}")
         print()
