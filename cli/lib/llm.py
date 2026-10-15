@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 
-def call_llm(content):
+def call_llm(content, show_usage=True):
     load_dotenv()
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
@@ -26,10 +26,11 @@ def call_llm(content):
     response = client.chat.completions.create(
         model="openrouter/free", messages=messages)
     output = response.choices[0].message.content
-    usage = response.usage
-    if usage is not None:
-        print("Prompt tokens: ", usage.prompt_tokens)
-        print("Response tokens: ", usage.completion_tokens)
-    else:
-        print("Token usage unavailable")
+    if show_usage:
+        usage = response.usage
+        if usage is not None:
+            print("Prompt tokens: ", usage.prompt_tokens)
+            print("Response tokens: ", usage.completion_tokens)
+        else:
+            print("Token usage unavailable")
     return output

@@ -1,6 +1,7 @@
 import argparse
 
 from lib.query_enhancement import ENHANCE_METHODS, enhance_query
+from lib.reranking import FETCH_MULTIPLIER, RERANK_METHODS, rerank
 from lib.search_utils import load_movies, normalize_scores
 
 
@@ -11,6 +12,18 @@ def print_rrf_results(results: list[dict]) -> None:
         print(
             f"  BM25 Rank: {result['bm25_rank']}, Semantic Rank: {result['semantic_rank']}")
         print(f"  {result['document'][:100]}...")
+        print()
+
+
+def print_reranked_results(query: str, k: int, results: list[dict]) -> None:
+    print(f"Reciprocal Rank Fusion Results for '{query}' (k={k}):\n")
+    for i, result in enumerate(results, start=1):
+        print(f"{i}. {result['title']}")
+        print(f"   Re-rank Score: {result['rerank_score']:.3f}/10")
+        print(f"   RRF Score: {result['rrf_score']:.3f}")
+        print(
+            f"   BM25 Rank: {result['bm25_rank']}, Semantic Rank: {result['semantic_rank']}")
+        print(f"   {result['document'][:100]}...")
         print()
 
 
@@ -47,6 +60,12 @@ def main() -> None:
         choices=ENHANCE_METHODS,
         help="Query enhancement method",
     )
+    rrf_parser.add_argument(
+        "--rerank-method",
+        type=str,
+        choices=RERANK_METHODS,
+        help="Re-rank the RRF results with an LLM",
+    )
 
     args = parser.parse_args()
 
@@ -76,8 +95,19 @@ def main() -> None:
                     f"Enhanced query ({args.enhance}): '{args.query}' -> '{query}'\n")
 
             hybrid_search = HybridSearch(load_movies())
-            print_rrf_results(hybrid_search.rrf_search(
-                query, args.k, args.limit))
+
+            if args.rerank_method:
+                # Over-fetch so the LLM has a wider pool to promote from.
+                results = hybrid_search.rrf_search(
+                    query, args.k, args.limit * FETCH_MULTIPLIER)
+                print(
+                    f"Re-ranking top {args.limit} results using {args.rerank_method} method...")
+                results = rerank(query, results,
+                                 args.rerank_method, args.limit)
+                print_reranked_results(query, args.k, results)
+            else:
+                print_rrf_results(hybrid_search.rrf_search(
+                    query, args.k, args.limit))
         case _:
             parser.print_help()
 
