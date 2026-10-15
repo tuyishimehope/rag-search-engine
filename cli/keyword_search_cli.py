@@ -120,9 +120,12 @@ def main() -> None:
         case "bm25search":
             idx = load_index_or_exit()
             results = idx.bm25_search(args.query, args.limit)
-            for rank, (doc_id, score) in enumerate(results, start=1):
+            for rank, result in enumerate(results, start=1):
+                doc_id = int(result["doc_id"])
+                score = result["score"]
                 print(
-                    f"{rank}. ({doc_id}) {idx.docmap[doc_id]['title']} - Score: {score:.2f}")
+                    f"{rank}. ({doc_id}) {idx.docmap[doc_id]['title']} - Score: {score:.2f}"
+                )
         case _:
             parser.print_help()
 

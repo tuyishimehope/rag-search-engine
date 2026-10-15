@@ -124,7 +124,7 @@ class InvertedIndex:
         BM25 = bm25_tf * bm25_idf
         return BM25
 
-    def bm25_search(self, query: str, limit: int = 5) -> list[tuple[int, float]]:
+    def bm25_search(self, query: str, limit: int = 5) -> list[dict[int | str, float]]:
         tokens = tokenize_text(query)
         if not tokens:
             return []
@@ -132,7 +132,7 @@ class InvertedIndex:
         for doc_id in self.docmap:
             scores[doc_id] = sum(self.bm25(doc_id, t) for t in tokens)
         ranked = sorted(scores.items(), key=lambda kv: (-kv[1], kv[0]))
-        return ranked[:limit]
+        return [{"doc_id": doc_id, "score": score} for doc_id, score in ranked[:limit]]
 
 
 def load_movies():
@@ -180,3 +180,13 @@ def filter_stop_words(words, stop_words) -> list[str]:
         else:
             results.append(stemmer.stem(word))
     return results
+
+
+def normalize_scores(scores: list[float]) -> list[float]:
+    if not scores:
+        return []
+    min_score = min(scores)
+    max_score = max(scores)
+    if min_score == max_score:
+        return [1.0] * len(scores)
+    return [(score - min_score) / (max_score - min_score) for score in scores]

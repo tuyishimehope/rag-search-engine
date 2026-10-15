@@ -221,7 +221,15 @@ def semantic_chunking(text: str, max_chunk_size: int, overlap: int) -> list[str]
         raise ValueError(
             "overlap must be at least 0 and smaller than the chunk size")
 
+    text = text.strip()
+    if not text:
+        return []
+
     sentences = re.split(r"(?<=[.!?])\s+", text)
+    if len(sentences) == 1 and not sentences[0].endswith((".", "!", "?")):
+        sentences = [text]
+    sentences = [sentence.strip() for sentence in sentences if sentence.strip()]
+
     step = max_chunk_size - overlap
     chunks = []
     start = 0
@@ -229,6 +237,8 @@ def semantic_chunking(text: str, max_chunk_size: int, overlap: int) -> list[str]
         window = sentences[start:start + max_chunk_size]
         if chunks and len(window) <= overlap:
             break  # nothing new in this window, only the overlap
-        chunks.append(" ".join(window))
+        chunk = " ".join(window)
+        if chunk.strip():
+            chunks.append(chunk)
         start += step
     return chunks
