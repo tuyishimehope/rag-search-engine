@@ -1,5 +1,7 @@
 import argparse
 
+from lib.llm_evaluation import evaluate_results
+from lib.pipeline_debug import enable_debug, log_query, log_results
 from lib.query_enhancement import ENHANCE_METHODS, enhance_query
 from lib.reranking import FETCH_MULTIPLIER, RERANK_METHODS, rerank
 from lib.search_utils import load_movies, normalize_scores
@@ -33,6 +35,12 @@ def print_reranked_results(query: str, k: int, results: list[dict],
             f"   BM25 Rank: {result['bm25_rank']}, Semantic Rank: {result['semantic_rank']}")
         print(f"   {result['document'][:100]}...")
         print()
+
+
+def print_evaluation(results: list[dict], scores: list[int]) -> None:
+    for i, (result, score) in enumerate(zip(results, scores), start=1):
+        print(f"{i}. {result['title']}: {score}/3")
+    print()
 
 
 def main() -> None:
@@ -72,7 +80,17 @@ def main() -> None:
         "--rerank-method",
         type=str,
         choices=RERANK_METHODS,
-        help="Re-rank the RRF results with an LLM",
+        help="Re-rank the RRF results (LLM or cross-encoder)",
+    )
+    rrf_parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="Have an LLM rate each returned result from 0 to 3",
+    )
+    rrf_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Log every pipeline stage (queries, RRF pool, re-ranked results) to stderr",
     )
 
     args = parser.parse_args()
@@ -96,11 +114,18 @@ def main() -> None:
         case "rrf-search":
             from lib.hybrid_search import HybridSearch
 
+            if args.debug:
+                enable_debug()
+
             query = args.query
+            log_query("Original query", args.query)
             if args.enhance:
                 query = enhance_query(args.query, args.enhance)
                 print(
                     f"Enhanced query ({args.enhance}): '{args.query}' -> '{query}'\n")
+                log_query(f"Query after enhancement ({args.enhance})", query)
+            else:
+                log_query("Query after enhancement", f"{query} (no enhancement requested)")
 
             hybrid_search = HybridSearch(load_movies())
 
@@ -108,15 +133,25 @@ def main() -> None:
                 # Over-fetch so the LLM has a wider pool to promote from.
                 results = hybrid_search.rrf_search(
                     query, args.k, args.limit * FETCH_MULTIPLIER)
+                log_results("RRF results (re-ranking pool)", results)
                 print(
                     f"Re-ranking top {args.limit} results using {args.rerank_method} method...")
                 results = rerank(query, results,
                                  args.rerank_method, args.limit)
+                log_results(
+                    f"Final results after {args.rerank_method} re-ranking", results)
                 print_reranked_results(
                     query, args.k, results, args.rerank_method)
             else:
-                print_rrf_results(hybrid_search.rrf_search(
-                    query, args.k, args.limit))
+                results = hybrid_search.rrf_search(query, args.k, args.limit)
+                log_results("RRF results", results)
+                log_results("Final results (no re-ranking)", results)
+                print_rrf_results(results)
+
+            if args.evaluate:
+                scores = evaluate_results(query, results)
+                if scores is not None:
+                    print_evaluation(results, scores)
         case _:
             parser.print_help()
 
