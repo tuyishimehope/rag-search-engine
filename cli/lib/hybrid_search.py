@@ -8,6 +8,10 @@ def hybrid_score(bm25_score: float, semantic_score: float, alpha: float = 0.5) -
     return alpha * bm25_score + (1 - alpha) * semantic_score
 
 
+def rrf_score(rank: int, k: int = 60) -> float:
+    return 1 / (k + rank)
+
+
 class HybridSearch:
     def __init__(self, documents: list[dict]) -> None:
         self.documents = documents
@@ -63,5 +67,37 @@ class HybridSearch:
         return ranked[:limit]
 
     def rrf_search(self, query: str, k: int, limit: int = 10) -> list[dict]:
-        raise NotImplementedError("RRF hybrid search is not implemented yet.")
-    
+        if k < 0:
+            raise ValueError("k must not be negative")
+        fetch = limit * 500
+        bm25_results = self._bm25_search(query, fetch)
+        semantic_results = self.semantic_search.search_chunks(query, fetch)
+
+        docs_by_id = {doc["id"]: doc for doc in self.documents}
+        combined: dict[int, dict] = {}
+
+        def entry_for(doc_id: int) -> dict:
+            if doc_id not in combined:
+                doc = docs_by_id[doc_id]
+                combined[doc_id] = {
+                    "id": doc_id,
+                    "title": doc["title"],
+                    "document": doc["description"],
+                    "bm25_rank": None,
+                    "semantic_rank": None,
+                    "rrf_score": 0.0,
+                }
+            return combined[doc_id]
+
+        for rank, result in enumerate(bm25_results, start=1):
+            entry = entry_for(result["doc_id"])
+            entry["bm25_rank"] = rank
+            entry["rrf_score"] += rrf_score(rank, k)
+        for rank, result in enumerate(semantic_results, start=1):
+            entry = entry_for(result["id"])
+            entry["semantic_rank"] = rank
+            entry["rrf_score"] += rrf_score(rank, k)
+
+        ranked = sorted(combined.values(),
+                        key=lambda e: (-e["rrf_score"], e["id"]))
+        return ranked[:limit]

@@ -1,13 +1,26 @@
 import argparse
 
+from lib.query_enhancement import ENHANCE_METHODS, enhance_query
 from lib.search_utils import load_movies, normalize_scores
+
+
+def print_rrf_results(results: list[dict]) -> None:
+    for i, result in enumerate(results, start=1):
+        print(f"{i}. {result['title']}")
+        print(f"  RRF Score: {result['rrf_score']:.3f}")
+        print(
+            f"  BM25 Rank: {result['bm25_rank']}, Semantic Rank: {result['semantic_rank']}")
+        print(f"  {result['document'][:100]}...")
+        print()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Hybrid Search CLI")
-    sub_parsers = parser.add_subparsers(dest="command", help="Available commands")
+    sub_parsers = parser.add_subparsers(
+        dest="command", help="Available commands")
 
-    normalize_parser = sub_parsers.add_parser("normalize", help="List of scores")
+    normalize_parser = sub_parsers.add_parser(
+        "normalize", help="List of scores")
     normalize_parser.add_argument(
         "scores", nargs="*", type=float, help="List of scores")
 
@@ -19,7 +32,22 @@ def main() -> None:
         help="Weight of the BM25 score (0 = semantic only, 1 = keyword only)")
     weighted_parser.add_argument(
         "--limit", type=int, default=5, help="Number of results to return")
-    
+
+    rrf_parser = sub_parsers.add_parser(
+        "rrf-search", help="Hybrid search using Reciprocal Rank Fusion")
+    rrf_parser.add_argument("query", type=str, help="Search query")
+    rrf_parser.add_argument(
+        "-k", type=int, default=60,
+        help="RRF constant: higher values flatten the influence of top ranks")
+    rrf_parser.add_argument(
+        "--limit", type=int, default=5, help="Number of results to return")
+    rrf_parser.add_argument(
+        "--enhance",
+        type=str,
+        choices=ENHANCE_METHODS,
+        help="Query enhancement method",
+    )
+
     args = parser.parse_args()
 
     match args.command:
@@ -38,6 +66,18 @@ def main() -> None:
                 print(
                     f"  BM25: {result['bm25_score']:.3f}, Semantic: {result['semantic_score']:.3f}")
                 print(f"  {result['document'][:100]}...")
+        case "rrf-search":
+            from lib.hybrid_search import HybridSearch
+
+            query = args.query
+            if args.enhance:
+                query = enhance_query(args.query, args.enhance)
+                print(
+                    f"Enhanced query ({args.enhance}): '{args.query}' -> '{query}'\n")
+
+            hybrid_search = HybridSearch(load_movies())
+            print_rrf_results(hybrid_search.rrf_search(
+                query, args.k, args.limit))
         case _:
             parser.print_help()
 
