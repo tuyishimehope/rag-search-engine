@@ -6,7 +6,7 @@ from textwrap import dedent
 
 from lib.llm import call_llm
 
-RERANK_METHODS = ["individual", "batch"]
+RERANK_METHODS = ["individual", "batch", "cross_encoder"]
 
 # Re-rank a wider pool than we will show: the LLM can only promote a movie
 # that RRF let into the pool, so a bigger pool gives it more to work with.
@@ -18,6 +18,8 @@ MAX_ATTEMPTS = 3
 
 # Seconds to wait between LLM calls so the free tier doesn't rate-limit us.
 DELAY_SECONDS = 3.0
+
+CROSS_ENCODER_MODEL = "cross-encoder/ms-marco-TinyBERT-L2-v2"
 
 # In a batch prompt every movie shares one context window, so each
 # description is cut to this many characters to keep the prompt small.
@@ -196,11 +198,40 @@ def rerank_batch(query: str, results: list[dict], limit: int, *,
     return reranked[:limit]
 
 
+def build_cross_encoder_pairs(query: str, results: list[dict]) -> list[list[str]]:
+    return [
+        [query, f"{doc.get('title', '')} - {doc.get('document', '')}"]
+        for doc in results
+    ]
+
+
+def rerank_cross_encoder(query: str, results: list[dict], limit: int, *,
+                         cross_encoder=None) -> list[dict]:
+    if not results:
+        return []
+    if cross_encoder is None:
+        # Imported here so the CLI doesn't pay torch's start-up cost unless
+        # this method is actually used. device="cpu" because the model is tiny
+        # (a few dozen pairs per query) and it sidesteps GPU/MPS errors.
+        from sentence_transformers import CrossEncoder
+        cross_encoder = CrossEncoder(CROSS_ENCODER_MODEL, device="cpu")
+
+    # One predict() call scores every (query, document) pair together.
+    scores = cross_encoder.predict(build_cross_encoder_pairs(query, results))
+    reranked = [{**doc, "cross_encoder_score": float(score)}
+                for doc, score in zip(results, scores)]
+    # sorted() is stable, so equal scores keep their RRF order.
+    reranked.sort(key=lambda r: r["cross_encoder_score"], reverse=True)
+    return reranked[:limit]
+
+
 def rerank(query: str, results: list[dict], method: str, limit: int, **kwargs) -> list[dict]:
     match method:
         case "individual":
             return rerank_individual(query, results, limit, **kwargs)
         case "batch":
             return rerank_batch(query, results, limit, **kwargs)
+        case "cross_encoder":
+            return rerank_cross_encoder(query, results, limit, **kwargs)
         case _:
             raise ValueError(f"Unknown rerank method: {method}")

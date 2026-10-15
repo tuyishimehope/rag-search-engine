@@ -20,10 +20,14 @@ def print_reranked_results(query: str, k: int, results: list[dict],
     print(f"Reciprocal Rank Fusion Results for '{query}' (k={k}):\n")
     for i, result in enumerate(results, start=1):
         print(f"{i}. {result['title']}")
-        if method == "batch":
-            print(f"   Re-rank Rank: {result['rerank_rank']}")
-        else:
-            print(f"   Re-rank Score: {result['rerank_score']:.3f}/10")
+        match method:
+            case "batch":
+                print(f"   Re-rank Rank: {result['rerank_rank']}")
+            case "cross_encoder":
+                print(
+                    f"   Cross Encoder Score: {result['cross_encoder_score']:.3f}")
+            case _:
+                print(f"   Re-rank Score: {result['rerank_score']:.3f}/10")
         print(f"   RRF Score: {result['rrf_score']:.3f}")
         print(
             f"   BM25 Rank: {result['bm25_rank']}, Semantic Rank: {result['semantic_rank']}")
