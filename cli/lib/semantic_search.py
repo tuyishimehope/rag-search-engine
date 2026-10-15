@@ -1,3 +1,5 @@
+import json
+
 import regex as re
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -5,11 +7,13 @@ from sentence_transformers import SentenceTransformer
 from lib.search_utils import CACHE_DIR, load_movies
 
 EMBEDDINGS_PATH = CACHE_DIR / "movie_embeddings.npy"
+CHUNKS_EMBEDDINGS_PATH = CACHE_DIR / "chunk_embeddings.npy"
+CHUNK_METADATA_PATH = CACHE_DIR / "chunk_metadata.json"
 
 
 class SemanticSearch():
-    def __init__(self):
-        model = SentenceTransformer("all-MiniLM-L6-v2")
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        model = SentenceTransformer(model_name)
         self.model = model
         self.embeddings = None
         self.documents = {}
@@ -59,6 +63,88 @@ class SemanticSearch():
             }
             for score, doc in scored[:limit]
         ]
+
+
+class ChunkedSemanticSearch(SemanticSearch):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2") -> None:
+        super().__init__(model_name)
+        self.chunk_embeddings = None
+        self.chunk_metadata = None
+
+    def build_chunk_embeddings(self, documents: list[dict]) -> np.ndarray:
+        self._register_documents(documents)
+        all_chunks = []
+        chunk_metadata = []
+
+        for movie_idx, doc in enumerate(documents):
+            if not doc["description"] or not doc["description"].strip():
+                continue
+            chunks = semantic_chunking(
+                doc["description"], max_chunk_size=4, overlap=1)
+            for chunk_idx, chunk in enumerate(chunks):
+                all_chunks.append(chunk)
+                chunk_metadata.append({
+                    "movie_idx": movie_idx,
+                    "chunk_idx": chunk_idx,
+                    "total_chunks": len(chunks),
+                })
+
+        self.chunk_embeddings = self.model.encode(
+            all_chunks, show_progress_bar=True)
+        self.chunk_metadata = chunk_metadata
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        np.save(CHUNKS_EMBEDDINGS_PATH, self.chunk_embeddings)
+        with open(CHUNK_METADATA_PATH, "w") as file:
+            json.dump({"chunks": chunk_metadata,
+                      "total_chunks": len(all_chunks)}, file, indent=2)
+        return self.chunk_embeddings
+
+    def load_or_create_chunk_embeddings(self, documents: list[dict]) -> np.ndarray:
+        self._register_documents(documents)
+        if CHUNKS_EMBEDDINGS_PATH.exists() and CHUNK_METADATA_PATH.exists():
+            self.chunk_embeddings = np.load(CHUNKS_EMBEDDINGS_PATH)
+            with open(CHUNK_METADATA_PATH, "r") as file:
+                self.chunk_metadata = json.load(file)["chunks"]
+            return self.chunk_embeddings
+        return self.build_chunk_embeddings(documents)
+
+    def search_chunks(self, query: str, limit: int = 10):
+        if self.chunk_embeddings is None or self.chunk_metadata is None:
+            raise ValueError(
+                "No chunk embeddings loaded. Call `load_or_create_chunk_embeddings` first.")
+
+        query_embedding = self.generate_embedding(query)
+
+        # 1. score every chunk; metadata row i describes embedding row i
+        chunk_scores = []
+        for chunk_embedding, meta in zip(self.chunk_embeddings, self.chunk_metadata):
+            chunk_scores.append({
+                "chunk_idx": meta["chunk_idx"],
+                "movie_idx": meta["movie_idx"],
+                "score": cosine_similarity(query_embedding, chunk_embedding),
+            })
+
+        # 2. a movie is as good as its best chunk
+        best_per_movie = {}
+        for chunk_score in chunk_scores:
+            movie_idx = chunk_score["movie_idx"]
+            if (movie_idx not in best_per_movie
+                    or chunk_score["score"] > best_per_movie[movie_idx]["score"]):
+                best_per_movie[movie_idx] = chunk_score
+
+        # 3. rank movies, keep the top `limit`, shape the output
+        ranked = sorted(best_per_movie.values(),
+                        key=lambda cs: cs["score"], reverse=True)
+        results = []
+        for chunk_score in ranked[:limit]:
+            doc = self.documents[chunk_score["movie_idx"]]
+            results.append({
+                "id": doc["id"],
+                "title": doc["title"],
+                "document": doc["description"][:100],
+                "score": round(float(chunk_score["score"]), 3),
+            })
+        return results
 
 
 def verify_model():
@@ -129,14 +215,20 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
 
 
 def semantic_chunking(text: str, max_chunk_size: int, overlap: int) -> list[str]:
-    output = re.split(r"(?<=[.!?])\s+", text)
     if max_chunk_size < 1:
         raise ValueError("chunk size must be at least 1")
+    if overlap < 0 or overlap >= max_chunk_size:
+        raise ValueError(
+            "overlap must be at least 0 and smaller than the chunk size")
 
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    step = max_chunk_size - overlap
     chunks = []
-    for start in range(0, len(output), max_chunk_size):
-        if overlap > 0 and start > 0:
-            chunks.append(" ".join(output[start - overlap:start + max_chunk_size]))
-        else:
-            chunks.append(" ".join(output[start:start + max_chunk_size]))
+    start = 0
+    while start < len(sentences):
+        window = sentences[start:start + max_chunk_size]
+        if chunks and len(window) <= overlap:
+            break  # nothing new in this window, only the overlap
+        chunks.append(" ".join(window))
+        start += step
     return chunks

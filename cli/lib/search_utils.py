@@ -12,12 +12,12 @@ stemmer = PorterStemmer()
 BM25_K1 = 1.5
 BM25_B = 0.75
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CACHE_DIR = PROJECT_ROOT / "cache"
 INDEX_PATH = CACHE_DIR / "index.pkl"
 DOCMAP_PATH = CACHE_DIR / "docmap.pkl"
-TERM_FREQUENCIES_PATH = PROJECT_ROOT / 'term_frequencies.pkl'
-DOC_LENGTHS_PATH = PROJECT_ROOT / 'doc_lengths.pkl'
+TERM_FREQUENCIES_PATH = CACHE_DIR / 'term_frequencies.pkl'
+DOC_LENGTHS_PATH = CACHE_DIR / 'doc_lengths.pkl'
 
 
 class InvertedIndex:
