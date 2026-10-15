@@ -15,11 +15,15 @@ def print_rrf_results(results: list[dict]) -> None:
         print()
 
 
-def print_reranked_results(query: str, k: int, results: list[dict]) -> None:
+def print_reranked_results(query: str, k: int, results: list[dict],
+                           method: str) -> None:
     print(f"Reciprocal Rank Fusion Results for '{query}' (k={k}):\n")
     for i, result in enumerate(results, start=1):
         print(f"{i}. {result['title']}")
-        print(f"   Re-rank Score: {result['rerank_score']:.3f}/10")
+        if method == "batch":
+            print(f"   Re-rank Rank: {result['rerank_rank']}")
+        else:
+            print(f"   Re-rank Score: {result['rerank_score']:.3f}/10")
         print(f"   RRF Score: {result['rrf_score']:.3f}")
         print(
             f"   BM25 Rank: {result['bm25_rank']}, Semantic Rank: {result['semantic_rank']}")
@@ -104,7 +108,8 @@ def main() -> None:
                     f"Re-ranking top {args.limit} results using {args.rerank_method} method...")
                 results = rerank(query, results,
                                  args.rerank_method, args.limit)
-                print_reranked_results(query, args.k, results)
+                print_reranked_results(
+                    query, args.k, results, args.rerank_method)
             else:
                 print_rrf_results(hybrid_search.rrf_search(
                     query, args.k, args.limit))
